@@ -1,0 +1,1 @@
+# automated-wireguard-stack
