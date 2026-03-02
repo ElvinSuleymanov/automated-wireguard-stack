@@ -1,15 +1,13 @@
 #!/bin/bash
 
-# Define ANSI color codes for sophisticated output
 CYAN='\033[0;36m'
 BOLD='\033[1m'
-NC='\033[0m' # No Color
+NC='\033[0m' 
 
 echo -e "${CYAN}${BOLD}=================================================="
 echo -e "   🛡️  WIREGUARD STACK AUTOMATION UTILITY"
 echo -e "==================================================${NC}"
 
-# Check for OS release info
 if [ -f /etc/os-release ]; then
     . /etc/os-release
     echo "Running on: $ID"
@@ -42,6 +40,9 @@ done
 read -p "Enter WireGuard Public Port [51820]: " USER_PORT
 USER_PORT=${USER_PORT:-51820} 
 
+read -p "Enter Wireguard container's IP address [172.20.0.40]: " IP_WIREGUARD
+IP_WIREGUARD=${IP_WIREGUARD:-172.20.0.40}
+
 read -p "Enter Unbound container's IP address [172.20.0.20]: " IP_UNBOUND
 IP_UNBOUND=${IP_UNBOUND:-172.20.0.20}
 
@@ -58,6 +59,7 @@ WEBPASSWORD=$WEBPASSWORD
 TIMEZONE=$DETECTED_TZ
 IP_UNBOUND=$IP_UNBOUND
 IP_PIHOLE=$IP_PIHOLE
+IP_WIREGUARD=$IP_WIREGUARD
 PUBLIC_IP=$PUBLIC_IP
 WIREGUARD_PUBLIC_PORT=$USER_PORT
 EOF
