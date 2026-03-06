@@ -3,32 +3,29 @@ graph TD
 
 subgraph Clients
     RC[Remote Client]
-    SS[Setup Script / Client Generator]
+    SS[Setup Script]
 end
 
 subgraph AWS["AWS Cloud - Docker Stack"]
 
-    subgraph Access_Layer
-        RP[Nginx Reverse Proxy]
-        AS[Authentication Service]
-    end
+    WG[WireGuard Server]
 
-    subgraph VPN_Layer
-        WG[WireGuard Server]
-    end
+    PH[Pi-hole Ad Blocker]
 
-    subgraph DNS_Stack
-        PH[Pi-hole Ad Blocker]
-        UB[Unbound Recursive Resolver]
-    end
+    UB[Unbound Resolver]
+
+    RP[Nginx Reverse Proxy]
+
+    AS[Authentication Service]
 
 end
 
-RC -->|WireGuard Tunnel| WG
-SS -->|API Request| RP
-RP -->|Token Validation| AS
+RC -->|WireGuard Tunnel<br/>UDP 51820| WG
+WG -->|DNS Stack<br/>UDP/TCP 53| PH
+PH -->|Recursive Query<br/>UDP/TCP 53| UB
 
-WG --> PH
-PH --> UB
-UB --> ROOT[(Root DNS Servers)]
+SS -->|API Request<br/>HTTPS 443| RP
+RP -->|Token Validation<br/>HTTP 5000 / Internal Port| AS
+
+UB -->|Root DNS Query<br/>UDP/TCP 53| ROOT[(Root DNS Servers)]
 ```
