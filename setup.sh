@@ -1,5 +1,7 @@
 #!/bin/bash
 
+
+#Just colors
 CYAN='\033[0;36m'
 BOLD='\033[1m'
 YELLOW='\033[1;33m'
@@ -11,6 +13,8 @@ echo -e "${CYAN}${BOLD}=================================================="
 echo -e "   🛡️  WIREGUARD STACK AUTOMATION UTILITY"
 echo -e "==================================================${NC}"
 
+
+#Distro detection (gonna use it in further versions)
 if [ -f /etc/os-release ]; then
     . /etc/os-release
     echo "Running on: $ID"
@@ -60,6 +64,12 @@ IP_UNBOUND=${input:-${IP_UNBOUND:-172.20.0.20}}
 read -p "Enter Pi-hole server IP [${IP_PIHOLE:-172.20.0.30}]: " input
 IP_PIHOLE=${input:-${IP_PIHOLE:-172.20.0.30}}
 
+read -p "Enter Nginx container IP [${IP_NGINX:-172.20.0.10}]: " input
+IP_NGINX=${input:-${IP_NGINX:-172.20.0.10}}
+
+read -p "Enter Auth Service IP [${IP_AUTH_SERVICE:-172.20.0.50}]: " input
+IP_AUTH_SERVICE=${input:-${IP_AUTH_SERVICE:-172.20.0.50}}
+
 if [ "$REUSE_ENV" = true ] && [ -n "$WEBPASSWORD" ]; then
     read -p "Keep existing Pi-hole web password? (y/n) [y]: " keep_pw
     keep_pw=${keep_pw:-y}
@@ -74,15 +84,8 @@ else
     echo -e "Your password is: ${BOLD}${WEBPASSWORD}${NC}"
 fi
 
-cat <<EOF > "$ENV_FILE"
-WEBPASSWORD=$WEBPASSWORD
-TIMEZONE=$DETECTED_TZ
-IP_UNBOUND=$IP_UNBOUND
-IP_PIHOLE=$IP_PIHOLE
-IP_WIREGUARD=$IP_WIREGUARD
-PUBLIC_IP=$PUBLIC_IP
-WIREGUARD_PUBLIC_PORT=$USER_PORT
-EOF
+
+
 
 echo -e "${CYAN}✔ Variables written to .env${NC}"
 chmod 600 "$ENV_FILE"
@@ -96,6 +99,33 @@ fi
 echo -e "\n${CYAN}${BOLD}Starting WireGuard stack...${NC}"
 docker compose up -d
 
+
+
+#Handle token
+if [ -z "$REGISTRATION_TOKEN" ]; then
+    REGISTRATION_TOKEN=$(openssl rand -hex 32)
+    echo -e "${GREEN}✔ New Registration Token generated for peer automation.${NC}"
+else
+    echo -e "${GREEN}✔ Using existing Registration Token.${NC}"
+fi
+
+
+
+#Writing to .env file
+cat <<EOF > "$ENV_FILE"
+WEBPASSWORD=$WEBPASSWORD
+TIMEZONE=$DETECTED_TZ
+IP_UNBOUND=$IP_UNBOUND
+IP_PIHOLE=$IP_PIHOLE
+IP_WIREGUARD=$IP_WIREGUARD
+PUBLIC_IP=$PUBLIC_IP
+WIREGUARD_PUBLIC_PORT=$USER_PORT
+REGISTRATION_TOKEN=$REGISTRATION_TOKEN
+EOF
+
+
+
+
 if [ $? -eq 0 ]; then
     echo -e "\n${GREEN}${BOLD}✅ Stack is up and running!${NC}"
     docker compose ps
@@ -105,3 +135,27 @@ else
 fi
 
 
+
+#Client scripts generation
+
+SERVER_PUBLIC_KEY = $(docker exec wireguard wg show wg0 public-key)
+
+mkdir -p ./scripts
+
+cat << EOF > setupclient.ps1
+
+if ((Get-Command wireguard -ErrorAction SilentlyContinue) -or (Get-Command wg -ErrorAction SilentlyContinue)) {
+    Write-Output "WireGuard CLI is accessible."
+} else {
+    Write-Output "Binary not found in PATH."
+}
+
+EOF
+
+cat << EOF > /scripts/setupclient.sh
+#!/bin/bash
+echo hello
+ 
+EOF
+
+chmod +x ./scripts/*

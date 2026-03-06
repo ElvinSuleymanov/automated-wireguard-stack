@@ -19,7 +19,7 @@ services:
       - unbound
       - pihole
     ports:
-      - "${WIREGUARD_PUBLIC_PORT}/udp"
+      - "${WIREGUARD_PUBLIC_PORT}:51820/udp"
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
@@ -41,8 +41,8 @@ services:
       - "65231:80/tcp"
     hostname: pihole
     dns:
-      - 127.0.0.1
       - ${IP_UNBOUND}
+      - 127.0.0.1
     volumes:
       - ./etc-pihole/:/etc/pihole/
       - ./etc-dnsmasq.d/:/etc/dnsmasq.d/
@@ -59,3 +59,35 @@ services:
       TZ: ${TIMEZONE}
       WEBPASSWORD: ${WEB_PASSWORD}
       PIHOLE_DNS_: "${IP_UNBOUND}#5053"
+
+  nginx-proxy:
+    image: nginx:latest
+    container_name: nginx_proxy
+    restart: unless-stopped
+    ports:
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      - auth-service
+    networks:
+      private_network:
+        ipv4_address: ${IP_NGINX}
+  auth-service:
+    build:
+      context: .
+      dockerfile:Dockerfile.auth
+      args:
+        APP_PORT: ${AUTH_SERVER_INTERNAL_PORT}
+    ports:
+      - ${AUTH_SERVER_INTERNAL_PORT}
+    container_name: auth_service
+    restart: unless-stopped
+    env_file:
+      - .env
+    networks:
+      private_network:
+        ipv4_address: ${IP_AUTH_SERVICE}
+
+
