@@ -1,19 +1,25 @@
-from flask import Flask
+from flask import Flask, abort, request
+from functools import wraps
+import secrets
 import os
 
 app = Flask(__name__)
 
-auth_key = os.getenv("AUTH_KEY_SCRIPT")
+AUTH_KEY_SCRIPT = os.getenv("AUTH_KEY_SCRIPT")
 
-@app.route("/", methods=["GET"])
-def authenticate_client_script():
+def require_auth(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-     ##main auth process goes in here
-     user_provided_key = request.headers.get("X-Auth-Token")
-     if not user_provided_key or user_provided_key != auth_key:
-        return 
-     return os.getenv("SERVER_PUBLIC_KEY")
-     
+        user_provided_key = request.headers.get("X-Auth-Token")
+        
+        if not user_provided_key or not secrets.compare_digest(user_provided_key, AUTH_KEY_SCRIPT):
+            abort(401)
+            
+        return f(*args, **kwargs)
     return decorated_function
 
+@app.route("/", methods=["GET"])
+@require_auth
+def authenticate_client_script():
+    #Below code is going to add public key of client to server and vice versa
+    return {"public_key": os.getenv("SERVER_PUBLIC_KEY")}

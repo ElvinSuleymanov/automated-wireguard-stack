@@ -1,7 +1,7 @@
 #!/bin/bash
 
 
-#Just colors
+# Just colors
 CYAN='\033[0;36m'
 BOLD='\033[1m'
 YELLOW='\033[1;33m'
@@ -13,12 +13,46 @@ echo -e "${CYAN}${BOLD}=================================================="
 echo -e "   🛡️  WIREGUARD STACK AUTOMATION UTILITY"
 echo -e "==================================================${NC}"
 
+# Checks whether docker installed or not 
+error() {
+    echo -e "\n❌ ERROR: $1\n" >&2
+    exit 1
+}
 
-#Distro detection (gonna use it in further versions)
+check_command() {
+    command -v "$1" >/dev/null 2>&1 || error "$1 is not installed.
+
+Please install it first:
+
+Docker:
+https://docs.docker.com/engine/install/
+
+Docker Compose:
+https://docs.docker.com/compose/install/"
+}
+
+echo "🔎 Checking system dependencies..."
+
+check_command docker
+
+if ! docker compose version >/dev/null 2>&1 && ! command -v docker-compose >/dev/null 2>&1; then
+    error "Docker Compose is not installed.
+
+Install it from:
+https://docs.docker.com/compose/install/"
+fi
+
+echo "✅ Docker and Docker Compose are installed."
+
+
+
+
+# Distro detection (gonna use it in further versions)
 if [ -f /etc/os-release ]; then
     . /etc/os-release
     echo "Running on: $ID"
 fi
+
 
 DETECTED_TZ=$(timedatectl 2>/dev/null | grep "Time zone" | awk '{print $3}')
 if [ -z "$DETECTED_TZ" ]; then
@@ -101,7 +135,7 @@ docker compose up -d
 
 
 
-#Handle token
+# Handle token
 if [ -z "$REGISTRATION_TOKEN" ]; then
     REGISTRATION_TOKEN=$(openssl rand -hex 32)
     echo -e "${GREEN}✔ New Registration Token generated for peer automation.${NC}"
@@ -109,9 +143,9 @@ else
     echo -e "${GREEN}✔ Using existing Registration Token.${NC}"
 fi
 
+SERVER_PUBLIC_KEY = $(docker exec wireguard wg show wg0 public-key)
 
-
-#Writing to .env file
+# Writing to .env file
 cat <<EOF > "$ENV_FILE"
 WEBPASSWORD=$WEBPASSWORD
 TIMEZONE=$DETECTED_TZ
@@ -121,6 +155,7 @@ IP_WIREGUARD=$IP_WIREGUARD
 PUBLIC_IP=$PUBLIC_IP
 WIREGUARD_PUBLIC_PORT=$USER_PORT
 REGISTRATION_TOKEN=$REGISTRATION_TOKEN
+SERVER_PUBLIC_KEY=$SERVER_PUBLIC_KEY
 EOF
 
 
@@ -136,9 +171,9 @@ fi
 
 
 
-#Client scripts generation
+# Client scripts generation
 
-SERVER_PUBLIC_KEY = $(docker exec wireguard wg show wg0 public-key)
+
 
 mkdir -p ./scripts
 
