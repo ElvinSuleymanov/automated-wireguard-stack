@@ -14,7 +14,7 @@ def require_auth(f):
         
         if not user_provided_key or not secrets.compare_digest(user_provided_key, AUTH_KEY_SCRIPT):
             abort(401)
-            
+        
         return f(*args, **kwargs)
     return decorated_function
 

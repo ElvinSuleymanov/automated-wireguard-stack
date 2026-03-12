@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     hostname: unbound
     volumes:
-      - ./unbound:/opt/unbound/etc/unbound/
+      - ./shared/unbound:/opt/unbound/etc/unbound/
     networks:
       private_network:
         ipv4_address: ${IP_UNBOUND}
@@ -16,7 +16,7 @@ services:
     image: linuxserver/wireguard
     container_name: wireguard
     volumes: 
-      - 
+      - ./shared/wireguard:/config
     depends_on:
       - unbound
       - pihole
