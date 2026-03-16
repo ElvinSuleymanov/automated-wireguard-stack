@@ -82,7 +82,8 @@
     done
 
 # Writing to .env file
-    echo "WEBPASSWORD=$WEBPASSWORD" >> .env
+        > "$ENV_FILE"          
+    chmod 600 "$ENV_FILE"  
     echo "DETECTED_TZ=$DETECTED_TZ" >> .env
     echo "IP_UNBOUND=$IP_UNBOUND" >> .env
     echo "IP_PIHOLE=$IP_PIHOLE" >> .env
@@ -92,15 +93,17 @@
     echo "PORT_WG=$PORT_WG" >> .env
     echo "PORT_AUTH=$PORT_AUTH" >> .env
     echo "PUBLIC_IP=$PUBLIC_IP" >> .env
-    echo "REGISTRATION_TOKEN=$REGISTRATION_TOKEN" >> .env
 
 # Composing containers
     docker compose up -d
 # Other variables
-    SERVER_PUBLIC_KEY = $(docker exec wireguard wg show wg0 public-key)
+    SERVER_PUBLIC_KEY=$(docker exec wireguard wg show wg0 public-key)
     WEBPASSWORD=$(openssl rand -base64 12) #Pi-hole UI password
     REGISTRATION_TOKEN=$(openssl rand -hex 32)
+
     echo "SERVER_PUBLIC_KEY=$SERVER_PUBLIC_KEY" >> .env
+    echo "WEBPASSWORD=$WEBPASSWORD" >> .env
+    echo "REGISTRATION_TOKEN=$REGISTRATION_TOKEN" >> .env
 
 # Check if anything wrong
     if [ $? -eq 0 ]; then
@@ -112,6 +115,7 @@
     fi
 
 # Client scripts generation
+
     mkdir -p ./scripts
 
     #Powershell scripting
@@ -124,7 +128,29 @@
         echo $SCRIPT_POWERSHELL > setupclient.ps1
 
     #Bash scripting
-        SCRIPT_BASH="!/bin/bash"
+        SCRIPT_BASH="#!/bin/bash"
         echo $SCRIPT_BASH > setupclient.sh
         
     chmod +x ./scripts/*
+
+
+# Configuration of reverse proxy(This section will only be used for secure communication during installation phase)
+    NGINX_CONF="./shared/nginx/nginx.conf"
+    CERTS_DIR="./certs"
+    mkdir -p "$CERTS_DIR"
+    if [ -f "$CERTS_DIR/fullchain.pem" ] && [ -f "$CERTS_DIR/privkey.pem" ]; then
+        echo "Found existing certificates in $CERTS_DIR"
+    else
+        echo "Certificates not found, generating self-signed certificates for testing..."
+
+        openssl req -x509 -nodes -days 365 \
+            -newkey rsa:2048 \
+            -keyout "$CERTS_DIR/privkey.pem" \
+            -out "$CERTS_DIR/fullchain.pem" \
+            -subj "/CN=localhost"
+
+        echo "Self-signed certificates generated in $CERTS_DIR"
+    fi
+
+    sed -i -E "s#proxy_pass http://[^:]+:[0-9]+;#proxy_pass http://${IP_AUTH}:${PORT_AUTH};#" "$NGINX_CONF"
+    sed -i -E "s#server_name public_ip;#server_name $PUBLIC_IP;#" "$NGINX_CONF"
