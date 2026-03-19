@@ -6,10 +6,10 @@ RUN apt-get update \
 
 WORKDIR /app
 
-COPY sidecar/requirements.txt .
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY sidecar/main.py .
+COPY main.py .
 
 ENV PORT_SIDECAR=8080
 
