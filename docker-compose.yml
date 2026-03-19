@@ -82,7 +82,7 @@ services:
       - .env
     environment:
       TZ: ${DETECTED_TZ}
-      WEBPASSWORD: ${WEB_PASSWORD}
+      WEBPASSWORD: ${WEBPASSWORD}
       PIHOLE_DNS_: "${IP_UNBOUND}#5053"
 
   auth-service:
