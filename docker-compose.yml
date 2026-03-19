@@ -99,7 +99,7 @@ services:
       private_network:
         ipv4_address: ${IP_AUTH}        
     environment:
-      - SIDECAR_URL=http://wg-sidecar:${PORT_SIDECAR}
+      - SIDECAR_URL=http://${IP_SIDECAR}:${PORT_SIDECAR}
       - SIDECAR_TOKEN=${SIDECAR_TOKEN}
     env_file:
       - .env
