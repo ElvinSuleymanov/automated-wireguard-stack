@@ -154,10 +154,6 @@ echo "App is ready!"
     NGINX_CONF="./nginx/nginx.conf"
     CERTS_DIR="./certs"
     mkdir -p "$CERTS_DIR"
-    if [ -f "$CERTS_DIR/fullchain.pem" ] && [ -f "$CERTS_DIR/privkey.pem" ] && grep -q "example" "$CERTS_DIR/"*; then
-        echo "Found existing certificates in $CERTS_DIR"
-    else
-        echo "Certificates not found, generating self-signed certificates for testing..."
 
         openssl req -x509 -nodes -days 365 \
             -newkey rsa:2048 \
@@ -166,7 +162,7 @@ echo "App is ready!"
             -subj "/CN=localhost"
 
         echo "Self-signed certificates generated in $CERTS_DIR"
-    fi
+
 
     sed -i -E "s#proxy_pass http://[^:]+:[0-9]+;#proxy_pass http://${IP_AUTH}:${PORT_AUTH};#" "$NGINX_CONF"
     sed -i -E "s#server_name public_ip;#server_name $PUBLIC_IP;#" "$NGINX_CONF"
