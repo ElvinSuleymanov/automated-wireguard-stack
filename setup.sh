@@ -134,11 +134,11 @@ echo "App is ready!"
     mkdir -p ./scripts
 
     #Powershell scripting
-        SCRIPT_POWERSHELL="if ((Get-Command wireguard -ErrorAction SilentlyContinue) -or (Get-Command wg -ErrorAction SilentlyContinue)) {
+        SCRIPT_POWERSHELL='if ((Get-Command wireguard -ErrorAction SilentlyContinue) -or (Get-Command wg -ErrorAction SilentlyContinue)) {
             Write-Output "WireGuard CLI is accessible."
         } else {
             Write-Output "Binary not found in PATH."
-        }"
+        }'
 
         echo $SCRIPT_POWERSHELL > setupclient.ps1
 
@@ -151,7 +151,7 @@ echo "App is ready!"
 
 
 # Configuration of reverse proxy(This section will only be used for secure communication during installation phase)
-    NGINX_CONF="./shared/nginx/nginx.conf"
+    NGINX_CONF="./nginx/nginx.conf"
     CERTS_DIR="./certs"
     mkdir -p "$CERTS_DIR"
     if [ -f "$CERTS_DIR/fullchain.pem" ] && [ -f "$CERTS_DIR/privkey.pem" ]; then
