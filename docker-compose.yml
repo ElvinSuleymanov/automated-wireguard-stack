@@ -11,6 +11,12 @@ services:
         ipv4_address: ${IP_UNBOUND}
     env_file:
       - .env
+    healthcheck:
+      test: ["CMD-SHELL", "drill @127.0.0.1 google.com || exit 1"]
+      interval: 1m30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
 
   wireguard:
     image: linuxserver/wireguard
@@ -19,8 +25,10 @@ services:
       private_network:
         ipv4_address: ${IP_WG}
     depends_on:
-      - unbound
-      - pihole
+      unbound:
+        condition: service_healthy 
+      pihole:
+        condition: service_healthy 
     ports:
       - "${PORT_WG}:51820/udp"
     cap_add:
@@ -31,20 +39,26 @@ services:
     sysctls:
       net.ipv4.conf.all.src_valid_mark: 1
       net.ipv4.ip_forward: 1
-    volumes:
-      - ./wireguard:/config
     env_file:
       - .env
-
+    healthcheck:
+      test: ["CMD", "wg", "show", "wg0"]
+      interval: 1m30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
   wg-sidecar:
     build:
       context: ./sidecar
       dockerfile: ./sidecar/Dockerfile.sidecar
+      args:
+        APP_PORT: ${PORT_SIDECAR}
     container_name: wg_sidecar
     restart: unless-stopped
     network_mode: "service:wireguard"   
     depends_on:
-      - wireguard
+      wireguard: 
+        condition: service_healthy 
     cap_add:
       - NET_ADMIN                      
     cap_drop:
@@ -55,13 +69,19 @@ services:
       - SIDECAR_TOKEN=${SIDECAR_TOKEN}
     env_file:
       - .env
-
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:${PORT_SIDECAR}/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
   pihole:
     image: pihole/pihole:latest
     container_name: pihole
     restart: unless-stopped
     depends_on:
-      - unbound
+      unbound:
+        condition: service_healthy  
     ports:
       - "65231:80/tcp"
     hostname: pihole
@@ -84,7 +104,12 @@ services:
       TZ: ${DETECTED_TZ}
       WEBPASSWORD: ${WEBPASSWORD}
       PIHOLE_DNS_: "${IP_UNBOUND}#5053"
-
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost/admin || exit 1"]
+      interval: 1m30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
   auth-service:
     build:
       context: ./auth
@@ -94,7 +119,8 @@ services:
     container_name: auth_service
     restart: unless-stopped
     depends_on:
-      - wg-sidecar
+      wg-sidecar:
+        condition: service_healthy 
     networks:
       private_network:
         ipv4_address: ${IP_AUTH}        
@@ -103,6 +129,12 @@ services:
       - SIDECAR_TOKEN=${SIDECAR_TOKEN}
     env_file:
       - .env
+    healthcheck:
+      test: ["CMD", "curl"]
+      interval: 1m30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
 
   nginx-proxy:
     image: nginx:latest
@@ -114,11 +146,17 @@ services:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./certs:/etc/nginx/certs:ro
     depends_on:
-      - auth-service
+      auth-service:
+        condition: service_healthy 
     networks:
       private_network:
         ipv4_address: ${IP_NGINX}
-
+    healthcheck:
+      test: ["CMD-SHELL", "curl -kf https://localhost || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      
 networks:
   private_network:
     driver: bridge
