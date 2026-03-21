@@ -50,7 +50,7 @@ services:
     healthcheck:
       test: [
         "CMD-SHELL", 
-        "dig +short +timeout=2 @127.0.0.1 google.com > /dev/null || \
+         "dig +short +timeout=2 @127.0.0.1 google.com > /dev/null || \
         dig +short +timeout=2 @${IP_UNBOUND} -p 5053 google.com > /dev/null || \
         dig +short +timeout=2 @8.8.8.8 google.com > /dev/null || \
         exit 1"
@@ -76,6 +76,8 @@ services:
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
+    volumes:
+      - ./config:/config
     sysctls:
       net.ipv4.conf.all.src_valid_mark: 1
       net.ipv4.ip_forward: 1

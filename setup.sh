@@ -150,7 +150,9 @@
 
 
 
+
 # Configuration of reverse proxy(This section will only be used for secure communication during installation phase)
+
     NGINX_CONF="./nginx/nginx.conf"
     CERTS_DIR="./certs"
     mkdir -p "$CERTS_DIR"
@@ -166,3 +168,6 @@
 
     sed -i -E "s#proxy_pass http://[^:]+:[0-9]+;#proxy_pass http://${IP_AUTH}:${PORT_AUTH};#" "$NGINX_CONF"
     sed -i -E "s#server_name public_ip;#server_name $PUBLIC_IP;#" "$NGINX_CONF"
+
+# Configuration of wireguard
+    
