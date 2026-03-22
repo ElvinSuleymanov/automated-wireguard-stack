@@ -1,6 +1,6 @@
 import os
 from fastapi import FastAPI, Security
-from models import PeerAdd
+from src.models import PeerAdd
 
 app = FastAPI()
 
