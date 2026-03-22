@@ -10,6 +10,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY main.py .
+COPY models.py .
+COPY helpers.py .
 
 ENV PORT_SIDECAR=8080
 
