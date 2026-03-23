@@ -1,9 +1,10 @@
 import os
 import subprocess
 from fastapi import FastAPI, Security
-from flask import  jsonify
 from models import PeerAdd
 from helpers import verify, wg
+from pydantic import BaseModel
+
 
 app = FastAPI()
 
@@ -15,9 +16,9 @@ WG_INTERFACE  = os.environ.get("WG_INTERFACE", "wg0")
 def health_check():
     try:
         subprocess.run(["wg show wg0"], check=True, capture_output=True)
-        return jsonify({"status":"ok"})
+        return {"status":"ok"}
     except:
-        return jsonify({"status":"wg0 is not ready"})
+        return {"status":"wg0 is not ready"}
     
 @app.get("/pubkey", dependencies=[Security(verify)])
 def get_pubkey():
@@ -57,3 +58,9 @@ def add_peer(peer: PeerAdd):
 @app.delete("/peers/{public_key}", status_code=204, dependencies=[Security(verify)])
 def remove_peer(public_key: str):
     wg("set", WG_INTERFACE, "peer", public_key, "remove")
+
+
+# Models
+
+class PeerAdd(BaseModel):
+    public_key: str
