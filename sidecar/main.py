@@ -7,12 +7,8 @@ from pydantic import BaseModel
 
 app = FastAPI()
 
-
 SIDECAR_TOKEN = os.environ["SIDECAR_TOKEN"]
 WG_INTERFACE  = os.environ.get("WG_INTERFACE", "wg0")
-
-
-# Models
 
 class PeerAdd(BaseModel):
     public_key: str
@@ -54,6 +50,7 @@ def list_peers():
 
 
 @app.post("/peers", status_code=201, dependencies=[Security(verify)])
+
 def add_peer(peer: PeerAdd):
     allowed = f"{peer.allowed_ip}/32"
     wg("set", WG_INTERFACE, "peer", peer.public_key, "allowed-ips", allowed)

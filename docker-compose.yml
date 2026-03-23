@@ -112,7 +112,7 @@ services:
     env_file:
       - .env
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:${PORT_SIDECAR}/health || exit 1"]
+      test: ["CMD-SHELL", "python3 -c 'import urllib.request; urllib.request.urlopen('http://localhost:${PORT_SIDECAR}/health')' || exit 1 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
