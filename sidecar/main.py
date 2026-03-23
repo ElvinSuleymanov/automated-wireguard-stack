@@ -1,7 +1,6 @@
 import os
 import subprocess
 from fastapi import FastAPI, Security
-from models import PeerAdd
 from helpers import verify, wg
 from pydantic import BaseModel
 
@@ -11,6 +10,12 @@ app = FastAPI()
 
 SIDECAR_TOKEN = os.environ["SIDECAR_TOKEN"]
 WG_INTERFACE  = os.environ.get("WG_INTERFACE", "wg0")
+
+
+# Models
+
+class PeerAdd(BaseModel):
+    public_key: str
 
 @app.get("/health")
 def health_check():
@@ -60,7 +65,3 @@ def remove_peer(public_key: str):
     wg("set", WG_INTERFACE, "peer", public_key, "remove")
 
 
-# Models
-
-class PeerAdd(BaseModel):
-    public_key: str
