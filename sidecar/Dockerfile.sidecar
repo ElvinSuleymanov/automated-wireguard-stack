@@ -9,9 +9,6 @@ WORKDIR /app
 COPY . /app
 RUN pip install --no-cache-dir -r requirements.txt
 
-RUN ls -la
-
-
-ENV PORT_SIDECAR=6000
+ENV PORT_SIDECAR=${PORT_SIDECAR}
 
 CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT_SIDECAR}"]
