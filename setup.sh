@@ -12,6 +12,7 @@
     echo -e "==================================================${NC}"
 
 # Change Defaults (Recommended)
+    SUBNET="172.29.144.0/24" #Don't forget CIDR 
     IP_WG="172.29.144.10"
     IP_UNBOUND="172.29.144.20"
     IP_PIHOLE="172.29.144.30"
@@ -21,6 +22,7 @@
     PORT_WG="51820"
     PORT_AUTH="5000"
     PORT_SIDECAR="6000"
+
 # Checks whether docker installed or not
     error() {
         echo -e "\n❌ ERROR: $1\n" >&2
@@ -85,13 +87,17 @@
         esac
     done
 
-# Other variables
+# Token generating
     WEBPASSWORD=$(openssl rand -base64 12) #Pi-hole UI password
     REGISTRATION_TOKEN=$(openssl rand -hex 32)
     SIDECAR_TOKEN=$(openssl rand -hex 32)
+    #private key generation
+        # mkdir -p ./wireguard/keys
+        # openssl
 # Writing to .env file
     > "$ENV_FILE"
     chmod 600 "$ENV_FILE"
+    echo "SUBNET=$SUBNET"                         >> "$ENV_FILE"
     echo "DETECTED_TZ=$DETECTED_TZ"               >> "$ENV_FILE"
     echo "IP_UNBOUND=$IP_UNBOUND"                 >> "$ENV_FILE"
     echo "IP_PIHOLE=$IP_PIHOLE"                   >> "$ENV_FILE"
