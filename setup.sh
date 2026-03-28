@@ -93,7 +93,7 @@
     SIDECAR_TOKEN=$(openssl rand -hex 32)
     #private key generation
         # mkdir -p ./wireguard/keys
-        # openssl
+        # openssl 
 # Writing to .env file
     > "$ENV_FILE"
     chmod 600 "$ENV_FILE"
