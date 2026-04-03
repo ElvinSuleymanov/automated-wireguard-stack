@@ -1,4 +1,6 @@
-![](assets/logo.png)
+<p align="center">
+  <img src="assets/logo.png" alt="Logo" width="200">
+</p>
 
 A self-hosted VPN stack with automated client registration, ad blocking, and recursive DNS — all containerized with Docker.
 
