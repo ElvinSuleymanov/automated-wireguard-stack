@@ -1,4 +1,4 @@
-# 🛡️ AutoGuard VPN
+![](assets/logo.png)
 
 A self-hosted VPN stack with automated client registration, ad blocking, and recursive DNS — all containerized with Docker.
 
