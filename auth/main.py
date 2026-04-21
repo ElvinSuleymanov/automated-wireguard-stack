@@ -1,10 +1,10 @@
 import os
 import requests;
+from typing import Any
 from fastapi import FastAPI, Security
 from helpers import verify, is_valid_wg_pubkey
 from pydantic import BaseModel, validator
 from fastapi import HTTPException
-
 
 
 #Variables
@@ -16,7 +16,7 @@ port_sidecar = os.environ["PORT_SIDECAR"]
 class PeerRequest(BaseModel):
     public_key:str
     @validator("public_key")
-    def validate_public_key(cls, v) -> str:
+    def validate_public_key(cls, v:str) -> str | None:
         if not is_valid_wg_pubkey(v):
             raise ValueError("Invalid WireGuard public key")
         return v

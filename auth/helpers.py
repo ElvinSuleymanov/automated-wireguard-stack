@@ -4,7 +4,7 @@ import base64
 import re
 from fastapi import HTTPException, Security
 from fastapi.security import APIKeyHeader
-
+    
 
 
 REGISTRATION_TOKEN = os.environ["REGISTRATION_TOKEN"]
