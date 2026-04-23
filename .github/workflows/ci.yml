@@ -1,0 +1,122 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: ShellCheck
+        run: shellcheck setup.sh scripts/setupclient.sh wireguard/peer-watcher.sh
+
+      - name: PowerShell syntax check
+        shell: pwsh
+        run: |
+          $errors = $null
+          $null = [System.Management.Automation.Language.Parser]::ParseFile(
+            "${{ github.workspace }}/scripts/setupclient.ps1",
+            [ref]$null,
+            [ref]$errors
+          )
+          if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_ }; exit 1 }
+
+      - name: Hadolint — auth
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: auth/Dockerfile.auth
+
+      - name: Hadolint — wireguard
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: wireguard/Dockerfile.wireguard
+
+      - name: Secret scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --only-verified
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install deps
+        run: pip install mypy -r auth/requirements.txt
+
+      - name: Mypy
+        run: mypy auth/ --strict --ignore-missing-imports --exclude 'Dockerfile*'
+
+  bandit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install bandit
+        run: pip install bandit[toml]
+
+      - name: Bandit
+        run: bandit -r auth/ -ll -ii
+
+  semgrep:
+    runs-on: ubuntu-latest
+    if: github.actor != 'dependabot[bot]'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Semgrep scan
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: >-
+            p/python
+            p/fastapi
+            p/secrets
+            p/docker
+        env:
+          SEMGREP_TIMEOUT: "300"
+
+  compose-validate:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create test .env
+        run: |
+          cat > .env << 'EOF'
+          SUBNET=172.29.144.0/24
+          INTERNAL_SUBNET=10.13.26.0
+          DETECTED_TZ=UTC
+          IP_WG=172.29.144.10
+          IP_UNBOUND=172.29.144.20
+          IP_PIHOLE=172.29.144.30
+          IP_NGINX=172.29.144.40
+          IP_AUTH=172.29.144.50
+          PORT_WG=51820
+          PORT_AUTH=5000
+          PUBLIC_IP=1.2.3.4
+          WEBPASSWORD=ci-test-password
+          REGISTRATION_TOKEN=ci-test-token
+          SERVER_PUBLIC_KEY=dGVzdHB1YmxpY2tleXRlc3RwdWJsaWNrZXl0ZXN0cHViPQ==
+          EOF
+
+      - name: Validate compose
+        run: docker compose config --quiet
+
+      - name: Build images
+        run: docker compose build

@@ -1,49 +1,55 @@
 #!/bin/bash
 
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+NC='\033[0m'
 
-#Defaults below
+echo -e "${CYAN}${BOLD}=================================================="
+echo -e "   🛡️  AUTOGUARD VPN CLIENT SETUP         "
+echo -e "==================================================${NC}"
 
-SERVER_IP="YOUR-PUBLIC-IP"
-SERVER_PORT="YOUR-SERVER-PORT"
-AUTH_KEY="AUTH_KEY"
-CONF_FILE_PATH="/etc/wireguard/wg0.conf"
-INTERFACE_NAME="wg0"
+SERVER_IP="PLACEHOLDER-PUBLIC-IP"
+INTERFACE_NAME="PLACEHOLDER-INTERFACE-NAME"
+AUTH_KEY="PLACEHOLDER-AUTH_KEY"
 
-check_wireguard_interface() {
-    if ip link show "$INTERFACE_NAME" > /dev/null 2>&1; then
+error()       { echo -e "\n${RED}❌ ERROR: $1${NC}\n" >&2; exit 1; }
+log_success() { echo -e "${GREEN}${BOLD}✅ $1${NC}"; }
 
-        INTERFACE_STATE=$(ip link show wg0 2>/dev/null | grep -w "UP" && echo "up" || echo "down")
+[ "$(id -u)" -eq 0 ] || error "Run this script with sudo."
 
-        if [ "$INTERFACE_STATE" = "up" ]; then
-            return 0
-        fi
-    fi
-}
+command -v wg      >/dev/null 2>&1 || error "wireguard-tools not installed. Run: apt install wireguard-tools"
+command -v curl    >/dev/null 2>&1 || error "curl not installed."
+command -v python3 >/dev/null 2>&1 || error "python3 not installed."
 
-check_wireguard_installation() {
-    if command -v wg >/dev/null 2>&1 || command -v wireguard >/dev/null 2>&1; then
-    echo "WireGuard CLI is accessible."
-    return 0
-}
+echo "🔑 Generating WireGuard keypair..."
+CLIENT_PRIVATE_KEY=$(wg genkey)
+CLIENT_PUBLIC_KEY=$(echo "$CLIENT_PRIVATE_KEY" | wg pubkey)
+log_success "Keypair generated."
 
-try_install_wireguard() {
-    if command -v apt-get >/dev/null 2>&1; then
-        sudo apt-get update
-        sudo apt-get install -y wireguard
-    elif command -v dnf >/dev/null 2>&1; then
-        sudo dnf install -y wireguard-tools
-    else
-        echo "Please install WireGuard manually: https://www.wireguard.com/install/"
-        exit 1
-    fi
-}
+echo "📡 Registering with VPN server at ${SERVER_IP}..."
+RESPONSE=$(curl -sk \
+    -X POST \
+    -H "Content-Type: application/json" \
+    -H "X-Auth-Token: ${AUTH_KEY}" \
+    -d "{\"public_key\": \"${CLIENT_PUBLIC_KEY}\"}" \
+    "https://${SERVER_IP}/addnewpeer")
 
+STATUS=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null)
+[ "$STATUS" = "ok" ] || error "Server rejected registration. Response: $RESPONSE"
 
+WG_CONFIG=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['config'])" 2>/dev/null)
+WG_CONFIG="${WG_CONFIG//<PASTE_YOUR_PRIVATE_KEY_HERE>/${CLIENT_PRIVATE_KEY}}"
 
-# Check if WireGuard is installed
+WG_CONF="/etc/wireguard/${INTERFACE_NAME}.conf"
+mkdir -p /etc/wireguard
+printf '%s\n' "$WG_CONFIG" > "$WG_CONF"
+chmod 600 "$WG_CONF"
+log_success "Config written to ${WG_CONF}."
 
-#Rest of your configuration here
+echo "🚀 Starting WireGuard..."
+wg-quick up "$INTERFACE_NAME" || error "wg-quick up failed."
+systemctl enable "wg-quick@${INTERFACE_NAME}" 2>/dev/null || true
 
-
-
-####This file is being used as a template
+log_success "Connected! VPN is active on interface ${INTERFACE_NAME}."
