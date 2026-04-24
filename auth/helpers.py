@@ -9,10 +9,11 @@ from fastapi.security import APIKeyHeader
 
 REGISTRATION_TOKEN = os.environ["REGISTRATION_TOKEN"]
 INTERNAL_SUBNET    = os.environ.get("INTERNAL_SUBNET", "10.13.26.0")
-SERVER_PUBLIC_KEY  = os.environ.get("SERVER_PUBLIC_KEY", "")
 PUBLIC_IP          = os.environ.get("PUBLIC_IP", "")
 PORT_WG            = os.environ.get("PORT_WG", "51820")
 IP_PIHOLE          = os.environ.get("IP_PIHOLE", "172.29.144.30")
+
+_PUBKEY_FILE = Path("/wg-keys/server_public.key")
 
 api_key_header = APIKeyHeader(name="X-Auth-Token")
 PEERS_DIR = Path("/app/peers")
