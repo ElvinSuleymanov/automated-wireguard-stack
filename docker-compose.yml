@@ -45,7 +45,7 @@ services:
       TZ: ${DETECTED_TZ}
       FTLCONF_webserver_api_password: ${WEBPASSWORD}
       FTLCONF_dns_upstreams: "${IP_UNBOUND}#5053"
-      FTLCONF_dns_listeningMode: single
+      FTLCONF_dns_listeningMode: all
     healthcheck:
       test: [
         "CMD-SHELL", 
