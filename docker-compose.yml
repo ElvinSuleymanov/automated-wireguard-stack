@@ -111,6 +111,7 @@ services:
       - .env
     volumes:
       - ./peers:/app/peers
+      - ./wireguard/keys/server_public.key:/wg-keys/server_public.key:ro
     healthcheck:
       test: ["CMD-SHELL", "python3 -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:${PORT_AUTH}/health\")'"]
       interval: 30s

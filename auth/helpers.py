@@ -67,14 +67,23 @@ def write_peer_conf(pubkey: str, ip: str) -> None:
     peer_file.chmod(0o600)
 
 
+def _server_public_key() -> str:
+    if _PUBKEY_FILE.exists():
+        key = _PUBKEY_FILE.read_text().strip()
+        if key:
+            return key
+    raise RuntimeError("Server public key not available yet")
+
+
 def generate_client_config(client_ip: str) -> str:
+    pubkey = _server_public_key()
     return (
         "[Interface]\n"
         "PrivateKey = <PASTE_YOUR_PRIVATE_KEY_HERE>\n"
         f"Address = {client_ip}/32\n"
         f"DNS = {IP_PIHOLE}\n\n"
         "[Peer]\n"
-        f"PublicKey = {SERVER_PUBLIC_KEY}\n"
+        f"PublicKey = {pubkey}\n"
         f"Endpoint = {PUBLIC_IP}:{PORT_WG}\n"
         "AllowedIPs = 0.0.0.0/0\n"
         "PersistentKeepalive = 25\n"

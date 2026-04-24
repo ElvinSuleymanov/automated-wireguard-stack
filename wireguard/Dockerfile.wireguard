@@ -2,6 +2,6 @@ FROM linuxserver/wireguard:latest
 
 RUN apk add --no-cache inotify-tools
 
-COPY peer-watcher.sh /custom-services.d/peer-watcher/run
+COPY peer-watcher.sh /custom-services.d/peer-watcher
 COPY export-pubkey.sh /custom-cont-init.d/99-export-pubkey.sh
-RUN chmod +x /custom-services.d/peer-watcher/run /custom-cont-init.d/99-export-pubkey.sh
+RUN chmod +x /custom-services.d/peer-watcher /custom-cont-init.d/99-export-pubkey.sh
