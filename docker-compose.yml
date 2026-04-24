@@ -27,9 +27,6 @@ services:
     ports:
       - "65231:80/tcp"
     hostname: pihole
-    dns:
-      - ${IP_UNBOUND}
-      - 127.0.0.1
     volumes:
       - ./etc-pihole/:/etc/pihole/
     cap_add:
