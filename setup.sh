@@ -213,8 +213,6 @@
     wait_for_stack 120
     echo "All services are up!"
     echo "App is ready!"
-    SERVER_PUBLIC_KEY=$(docker exec wireguard wg show wg0 public-key)
-    write_env_var SERVER_PUBLIC_KEY "$SERVER_PUBLIC_KEY"
 
 # Check if anything wrong
     if [ $COMPOSE_EXIT -eq 0 ]; then
