@@ -57,30 +57,41 @@ function WriteConfig($Config, $PrivateKey) {
     return $configPath
 }
 
-function InstallTunnel($ConfigPath) {
+function EnsureTunnelUp($ConfigPath) {
     if (!(Test-Path $ConfigPath)) {
         Write-Host "Config file not found at $ConfigPath — aborting." -ForegroundColor Red
         exit 1
     }
 
     $svcName = "WireGuardTunnel`$$InterfaceName"
-    if (Get-Service -Name $svcName -ErrorAction SilentlyContinue) {
-        Write-Host "Existing tunnel found, removing..." -ForegroundColor Yellow
-        & $WgGui /uninstalltunnelservice $InterfaceName
-        Start-Sleep -Seconds 2
-    }
+    $svc     = Get-Service -Name $svcName -ErrorAction SilentlyContinue
 
-    & $WgGui /installtunnelservice $ConfigPath
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "Tunnel service install failed (exit $LASTEXITCODE)." -ForegroundColor Red
-        exit 1
+    if ($svc) {
+        if ($svc.Status -ne "Running") {
+            try { Start-Service -Name $svcName -ErrorAction Stop }
+            catch { Write-Host "Service start failed: $_" -ForegroundColor Yellow }
+        }
+    } else {
+        & $WgGui /installtunnelservice $ConfigPath
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Tunnel service install failed (exit $LASTEXITCODE)." -ForegroundColor Red
+            exit 1
+        }
     }
-
-    Start-Sleep -Seconds 2
-    try { Start-Service -Name $svcName -ErrorAction Stop }
-    catch { Write-Host "Service start failed — check WireGuard logs." -ForegroundColor Yellow }
 
     Start-Process $WgGui
+}
+
+function ReinstallTunnel($ConfigPath) {
+    $svcName = "WireGuardTunnel`$$InterfaceName"
+    if (Get-Service -Name $svcName -ErrorAction SilentlyContinue) {
+        & $WgGui /uninstalltunnelservice $InterfaceName | Out-Null
+        $deadline = (Get-Date).AddSeconds(15)
+        while ((Get-Service -Name $svcName -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) {
+            Start-Sleep -Milliseconds 500
+        }
+    }
+    EnsureTunnelUp -ConfigPath $ConfigPath
 }
 
 Write-Host "=================================================" -ForegroundColor Cyan
@@ -92,7 +103,7 @@ CheckWireGuard
 $configPath = "C:\ProgramData\WireGuard\$InterfaceName.conf"
 if (Test-Path $configPath) {
     Write-Host "Config already exists. Bringing up existing tunnel..." -ForegroundColor Yellow
-    InstallTunnel -ConfigPath $configPath
+    EnsureTunnelUp -ConfigPath $configPath
     Write-Host "VPN is active on interface $InterfaceName." -ForegroundColor Green
     exit 0
 }
@@ -113,5 +124,5 @@ $ConfigPath = WriteConfig -Config $Response.config -PrivateKey $Keys.Private
 Write-Host "Config written to $ConfigPath" -ForegroundColor Green
 
 Write-Host "Installing WireGuard tunnel service..." -ForegroundColor Cyan
-InstallTunnel -ConfigPath $ConfigPath
+ReinstallTunnel -ConfigPath $ConfigPath
 Write-Host "VPN is active on interface $InterfaceName." -ForegroundColor Green
