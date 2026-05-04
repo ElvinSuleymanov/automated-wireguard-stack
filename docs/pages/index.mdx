@@ -1,0 +1,84 @@
+---
+title: AutoGuard VPN
+description: Self-hosted WireGuard VPN with automated peer registration, ad-blocking DNS, and recursive DNSSEC.
+---
+
+import Mermaid from '../components/Mermaid'
+
+# AutoGuard VPN
+
+AutoGuard VPN is a fully self-hosted, containerized VPN stack. It provides automated peer registration via a secure API, network-wide ad blocking through Pi-hole, and private recursive DNS resolution via Unbound — all running on a single Docker host.
+
+## Features
+
+- **Zero-touch client onboarding** — run one script on Linux or Windows to connect
+- **Ad-blocking DNS** — Pi-hole intercepts all VPN client DNS queries
+- **Recursive DNSSEC DNS** — Unbound resolves from root servers with no third-party DNS in the chain
+- **Hot peer reload** — `inotifywait` loads new peers into WireGuard without restarting any container
+- **Timing-safe token auth** — `secrets.compare_digest` prevents timing attacks on peer registration
+
+## Network Topology
+
+<Mermaid chart={`
+graph TD
+  classDef client    fill:#0ea5e9,stroke:#7dd3fc,stroke-width:2px,color:#020c17,font-weight:bold
+  classDef inet      fill:#1e293b,stroke:#475569,stroke-width:2px,color:#94a3b8,font-weight:bold
+  classDef wg        fill:#10b981,stroke:#6ee7b7,stroke-width:2px,color:#020c17,font-weight:bold
+  classDef pihole    fill:#f43f5e,stroke:#fda4af,stroke-width:2px,color:#fff,font-weight:bold
+  classDef unbound   fill:#f59e0b,stroke:#fde68a,stroke-width:2px,color:#020c17,font-weight:bold
+  classDef nginx     fill:#f97316,stroke:#fdba74,stroke-width:2px,color:#020c17,font-weight:bold
+  classDef auth      fill:#a855f7,stroke:#d8b4fe,stroke-width:2px,color:#fff,font-weight:bold
+
+  subgraph INTERNET["☁️  Internet"]
+    CLIENT["💻 Client Device"]
+    INET["🌐 Public Internet"]
+  end
+
+  subgraph DOCKER["🐳  Docker Host  ·  172.29.144.0/24"]
+    NGINX["🔒 nginx-proxy\n172.29.144.40  ·  :443/tcp"]
+    AUTH["🔑 auth-service\n172.29.144.50  ·  :5000/tcp"]
+    WG["⚡ wireguard\n172.29.144.10  ·  :51820/udp"]
+    PIHOLE["🛡️ pihole\n172.29.144.30  ·  :53 dns"]
+    UNBOUND["🔍 unbound\n172.29.144.20  ·  :5053/udp"]
+  end
+
+  CLIENT  -- "① HTTPS /addnewpeer"   --> NGINX
+  NGINX   -- "proxy_pass :5000"       --> AUTH
+  AUTH    -- "writes peer .conf"      --> WG
+  CLIENT  -- "② WireGuard :51820/udp" --> WG
+  WG      -- "NAT masquerade"         --> INET
+  CLIENT  -- "③ DNS via tunnel"       --> PIHOLE
+  PIHOLE  -- "allowed → :5053"        --> UNBOUND
+  UNBOUND -- "recursive + DNSSEC"     --> INET
+
+  class CLIENT client
+  class INET inet
+  class WG wg
+  class PIHOLE pihole
+  class UNBOUND unbound
+  class NGINX nginx
+  class AUTH auth
+`} />
+
+## Quick Start
+
+```bash
+git clone https://github.com/ElvinSuleymanov/AutoGuard-VPN.git
+cd AutoGuard-VPN
+chmod +x setup.sh
+./setup.sh
+```
+
+After `setup.sh` completes, copy `./scripts/setupclient.sh` (Linux) or `./scripts/setupclient.ps1` (Windows) to each client and run it as root/Administrator.
+
+## Service Summary
+
+| Service | Image | IP | Exposed Port | Role |
+|---|---|---|---|---|
+| `wireguard` | custom | `172.29.144.10` | `51820/udp` | WireGuard VPN server |
+| `unbound` | mvance/unbound | `172.29.144.20` | none | Recursive DNS |
+| `pihole` | pihole/pihole | `172.29.144.30` | `65231/tcp` | Ad-blocking DNS |
+| `nginx-proxy` | nginx:alpine | `172.29.144.40` | `443/tcp` | TLS reverse proxy |
+| `auth-service` | custom FastAPI | `172.29.144.50` | none | Peer registration API |
+
+WireGuard clients receive IPs in `10.13.26.0/24` starting at `10.13.26.2`, supporting up to 253 peers.

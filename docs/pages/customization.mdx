@@ -1,0 +1,203 @@
+---
+title: Customization
+description: How to change IPs, ports, subnets, NAT interface, TLS, and Pi-hole configuration in AutoGuard VPN.
+---
+
+# Customization
+
+All network topology variables live at the top of `setup.sh`. Edit them **before** running `./setup.sh` — they are written into `.env` and used by Docker Compose at startup. Changing them after the stack is running requires bringing the stack down and re-running `setup.sh`.
+
+## Network IPs
+
+```bash
+# setup.sh — edit these before running
+SUBNET="172.29.144.0/24"   # Docker bridge subnet
+IP_WG="172.29.144.10"
+IP_UNBOUND="172.29.144.20"
+IP_PIHOLE="172.29.144.30"
+IP_NGINX="172.29.144.40"
+IP_AUTH="172.29.144.50"
+```
+
+All five IPs must fall inside `SUBNET`. The Docker Compose `ipam` block is driven by `${SUBNET}` from `.env`, so changing `SUBNET` here is all that is needed — no edits to `docker-compose.yml` are required.
+
+> Changing any IP after initial setup requires `docker compose down` and re-running `setup.sh` to regenerate `.env`, re-patch `nginx.conf`, and restart the stack with the new addresses.
+
+## VPN Client Subnet
+
+```bash
+INTERNAL_SUBNET="10.13.26.0"   # /24 is assumed; server takes .1
+```
+
+Clients are allocated `10.13.26.2` through `10.13.26.254` (253 peers). To use a different range (e.g. `10.8.0.0`), change `INTERNAL_SUBNET` before running `setup.sh`. The value is written to `.env` and injected into the WireGuard container as `INTERNAL_SUBNET`.
+
+> All existing peer `.conf` files in `./peers/` reference the old subnet. Remove them and re-register clients after changing this value.
+
+## WireGuard Port
+
+```bash
+PORT_WG="51820"
+```
+
+`docker-compose.yml` maps `${PORT_WG}:51820/udp` — only the host side changes. The container always listens on `51820`. Changing this value after setup requires updating your firewall rules to allow the new port.
+
+## Interface Name
+
+```bash
+INTERFACE_NAME="wg0"
+```
+
+This controls the WireGuard interface name inside the container and is injected into client scripts. Change it only if you have a specific reason — `wg0` is the universal default and most tooling assumes it.
+
+## NAT Egress Interface
+
+The `PostUp`/`PostDown` rules in `./wireguard/wg_confs/wg0.conf` hardcode `eth0`:
+
+```ini
+PostUp   = iptables -A FORWARD -i %i -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
+```
+
+If your Docker host's egress interface is named differently (common on cloud VMs: `ens3`, `enp0s3`, `eth1`), masquerade silently fails and VPN clients lose internet access.
+
+**Check the actual name:**
+
+```bash
+docker exec wireguard ip link show
+```
+
+Then edit `./wireguard/wg_confs/wg0.conf` and replace `eth0` with the correct name:
+
+```bash
+sed -i 's/-o eth0/-o ens3/g' ./wireguard/wg_confs/wg0.conf
+docker compose restart wireguard
+```
+
+## TLS Certificate
+
+By default `setup.sh` generates a self-signed certificate valid for 365 days:
+
+```bash
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  -keyout ./certs/privkey.pem -out ./certs/fullchain.pem -subj "/CN=localhost"
+```
+
+To use a real certificate (e.g. from Let's Encrypt):
+
+1. Place your certificate chain at `./certs/fullchain.pem` and private key at `./certs/privkey.pem`.
+2. Update the Nginx `server_name` in `./nginx/nginx.conf` to match your domain.
+3. Remove `-sk` from curl calls in client scripts (the flag disables certificate verification).
+
+The `./certs/` directory is bind-mounted into the `nginx-proxy` container read-only — no other changes to `docker-compose.yml` are needed.
+
+## Pi-hole Blocklists
+
+### Accessing the Admin UI
+
+```
+http://<server-ip>:65231/admin     # outside the VPN
+http://172.29.144.30/admin         # inside the VPN tunnel
+```
+
+Retrieve the generated password:
+
+```bash
+grep WEBPASSWORD .env
+```
+
+---
+
+### Adding a Blocklist (Adlist)
+
+1. Open the admin UI and log in.
+2. Go to **Lists** in the left sidebar.
+3. Paste a blocklist URL into the **Address** field, add a comment, and click **Add**.
+4. Run **Tools → Update Gravity** (or click the **Update** button) to download and compile all lists.
+
+Gravity update can also be triggered from the server:
+
+```bash
+docker exec pihole pihole -g
+```
+
+---
+
+### Recommended Blocklists
+
+| List | URL | Focus |
+|---|---|---|
+| StevenBlack Unified | `https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts` | Ads + malware |
+| OISD Basic | `https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt` | Ads + trackers, low false positives |
+| HaGeZi Multi PRO | `https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.txt` | Comprehensive, maintained actively |
+| EasyList | `https://v.firebog.net/hosts/Easylist.txt` | Standard ad network domains |
+| Phishing Army | `https://phishing.army/download/phishing_army_blocklist_extended.txt` | Phishing domains |
+
+> Start with one or two lists. Running all simultaneously is fine but adds gravity compile time.
+
+---
+
+### Blocking Individual Domains
+
+To block a specific domain immediately without adding a full list:
+
+1. Go to **Domains** → **Blacklist** tab.
+2. Enter the domain (e.g. `ads.example.com`) and click **Add to Blacklist**.
+
+Or from the server shell:
+
+```bash
+docker exec pihole pihole --blacklist ads.example.com
+```
+
+Wildcard blocking (blocks all subdomains):
+
+```bash
+docker exec pihole pihole --blacklist --wildcard example.com
+```
+
+---
+
+### Whitelisting Domains
+
+If a legitimate site is blocked, whitelist it:
+
+1. Go to **Domains** → **Whitelist** tab → add the domain.
+
+Or from the shell:
+
+```bash
+docker exec pihole pihole --white-list cdn.example.com
+```
+
+Whitelisted domains override all blocklists, including gravity.
+
+---
+
+### Checking Why a Domain Is Blocked
+
+```bash
+docker exec pihole pihole --query ads.example.com
+```
+
+This shows which list(s) the domain appears in, useful for diagnosing false positives.
+
+## Pi-hole Admin Port
+
+The host-side port (`65231`) is set in `docker-compose.yml`:
+
+```yaml
+ports:
+  - "65231:80/tcp"
+```
+
+To use a different host port, edit this line and run `docker compose up -d`. The container-internal port (`80`) must stay as-is.
+
+## Unbound Configuration
+
+Unbound's config is bind-mounted from `./unbound/` into the container. Edit `./unbound/unbound.conf` and restart:
+
+```bash
+docker compose restart unbound
+```
+
+Common changes: adding local DNS overrides, adjusting cache size, or enabling query logging.

@@ -1,0 +1,121 @@
+---
+title: FAQ & Troubleshooting
+description: Common issues and known gotchas for AutoGuard VPN.
+---
+
+# FAQ & Troubleshooting
+
+## Clients have no internet after connecting
+
+**Likely cause:** The iptables NAT masquerade rule targets `eth0` hardcoded in `wg0.conf`:
+
+```
+PostUp = iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+```
+
+If the Docker bridge egress interface is not named `eth0`, masquerade silently fails.
+
+**Fix:**
+
+```bash
+docker exec wireguard ip link show
+```
+
+Find the actual egress interface name (e.g. `ens3`), edit `./wireguard/wg_confs/wg0.conf` to replace `eth0`, then:
+
+```bash
+docker compose restart wireguard
+```
+
+## Registration fails with an SSL certificate error
+
+Expected — the server uses a self-signed cert. Client scripts handle this automatically. When calling manually:
+
+```bash
+curl -sk -X POST \
+  -H "Content-Type: application/json" \
+  -H "X-Auth-Token: <token>" \
+  -d '{"public_key":"..."}' \
+  https://<SERVER>/addnewpeer
+```
+
+PS 7+: `Invoke-RestMethod -SkipCertificateCheck ...`
+
+PS 5.1: `[Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}`
+
+## `docker compose up` fails before running setup.sh
+
+The `.env` file is empty in the repository. Docker Compose cannot interpolate variables like `${IP_WG}` until `setup.sh` writes the file. Always run `./setup.sh` before any `docker compose` commands.
+
+## Pi-hole admin page is not accessible
+
+- The port is **65231**, not 80: `http://<server-ip>:65231/admin`
+- Retrieve the generated password: `grep WEBPASSWORD .env`
+- Check the container state: `docker compose ps pihole` and `docker compose logs pihole`
+
+## WireGuard container is unhealthy
+
+The healthcheck runs `wg show wg0` — it fails if `wg0` is not up.
+
+```bash
+docker compose logs wireguard
+```
+
+Common causes:
+- `wg0.conf` still contains the `your-private-key` placeholder (setup.sh patching failed)
+- Kernel module not loaded on the host: `modprobe wireguard`
+
+## auth-service exits immediately
+
+Check that `REGISTRATION_TOKEN` is present in `.env` — auth-service calls `os.environ["REGISTRATION_TOKEN"]` at import time and crashes if the variable is missing.
+
+Check that `server_public.key` is non-empty: `cat ./wireguard/keys/server_public.key`
+
+## Port 53 conflict warning
+
+AutoGuard VPN does not expose port 53 to the Docker host. Pi-hole listens on `172.29.144.30:53` inside its container and Unbound on `0.0.0.0:5053` inside its container — neither binds to the host's port 53. Any port 53 conflict you see is from another service on the host (e.g. `systemd-resolved`) and does not affect this stack.
+
+## New peer is not appearing in `wg show`
+
+`peer-watcher.sh` may have exited:
+
+```bash
+docker exec wireguard ps aux | grep peer-watcher
+docker compose restart wireguard
+```
+
+Also verify the `peers/` directory is correctly mounted in both containers:
+
+```bash
+docker inspect wireguard | grep -A5 Mounts
+docker inspect auth_service | grep -A5 Mounts
+```
+
+## Accessing the Pi-hole admin UI over VPN
+
+Once connected to the VPN:
+
+```
+http://172.29.144.30/admin
+```
+
+WireGuard's NAT masquerade routes `172.29.144.0/24` traffic through the Docker network, making the Pi-hole container reachable from VPN clients.
+
+From outside the VPN, use the host port:
+
+```
+http://<server-ip>:65231/admin
+```
+
+## Maximum number of clients
+
+The `10.13.26.0/24` subnet supports **253 peers** (`10.13.26.2` through `10.13.26.254`). Old entries in `./peers/` consume slots even if the client is gone. Remove stale peers manually:
+
+```bash
+rm ./peers/<sha256-prefix>.conf
+docker exec wireguard wg set wg0 peer <public-key> remove
+```
+
+## Does `DNSSEC=true` in the WireGuard service do anything?
+
+No observable effect in this stack. That environment variable is a `linuxserver/wireguard` image convention. DNSSEC is actually enforced by Unbound in `unbound.conf`. The variable is harmless but does not change WireGuard's behavior.

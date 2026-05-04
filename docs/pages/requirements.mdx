@@ -1,0 +1,67 @@
+---
+title: Requirements
+description: System requirements, exposed ports, and dependencies for AutoGuard VPN.
+---
+
+# Requirements
+
+## Server
+
+| Dependency | Check |
+|---|---|
+| Docker Engine 24.x | `docker --version` |
+| Docker Compose v2 | `docker compose version` |
+| `openssl` | `openssl version` |
+| `curl` | `curl --version` |
+| Bash 4.x | `bash --version` |
+
+**Hardware:** 1 vCPU, 512 MB RAM minimum (1 GB recommended), 2 GB disk, public IPv4.
+
+## Open Ports
+
+These must be reachable from the internet:
+
+| Port | Protocol | Service |
+|---|---|---|
+| `51820` | UDP | WireGuard tunnel (configurable via `PORT_WG`) |
+| `443` | TCP | Nginx — peer registration HTTPS API |
+
+## Host-Only Port
+
+| Port | Protocol | Purpose |
+|---|---|---|
+| `65231` | TCP | Pi-hole admin UI — access locally or over VPN only |
+
+> Pi-hole admin is on port **65231**, not 80.
+
+## Internal Docker Ports
+
+These are never exposed to the host:
+
+| Port | Service |
+|---|---|
+| `5000/tcp` | auth-service (FastAPI) |
+| `5053/udp` | Unbound DNS |
+
+## Kernel
+
+WireGuard requires kernel 5.6+ (built-in) or the `wireguard` DKMS module. The Compose file enables `net.ipv4.ip_forward` via `sysctls` and grants `CAP_NET_ADMIN` + `SYS_MODULE` to the WireGuard container.
+
+## Linux Client
+
+| Requirement | Install |
+|---|---|
+| `wireguard-tools` | `apt install wireguard-tools` |
+| `curl` | `apt install curl` |
+| `python3` | `apt install python3` |
+| root / sudo | required |
+
+## Windows Client
+
+| Requirement | Notes |
+|---|---|
+| PowerShell 5.1+ | Built in on Windows 10/11 |
+| Administrator | Required for tunnel service install |
+| WireGuard for Windows | Auto-installed via `winget` if absent |
+
+> The server uses a **self-signed TLS certificate**. Client scripts disable certificate validation automatically — this does not affect VPN tunnel security.

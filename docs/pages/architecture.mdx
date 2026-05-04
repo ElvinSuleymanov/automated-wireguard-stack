@@ -1,0 +1,145 @@
+---
+title: Architecture
+description: Technical deep dive into the AutoGuard VPN service architecture, peer lifecycle, and DNS chain.
+---
+
+import Mermaid from '../components/Mermaid'
+
+# Architecture
+
+## Service Startup Order
+
+`depends_on` with `condition: service_healthy` enforces strict ordering:
+
+<Mermaid chart={`
+graph LR
+  U["unbound\n172.29.144.20"] -->|healthy| P["pihole\n172.29.144.30"]
+  U -->|healthy| W["wireguard\n172.29.144.10"]
+  P -->|healthy| W
+  W -->|healthy| A["auth-service\n172.29.144.50"]
+  A -->|healthy| N["nginx-proxy\n172.29.144.40"]
+`} />
+
+## Peer Registration Flow
+
+<Mermaid chart={`
+sequenceDiagram
+  participant C as Client
+  participant N as nginx-proxy :443
+  participant A as auth-service :5000
+  participant FS as /app/peers/
+  participant W as peer-watcher.sh
+
+  C->>C: wg genkey → private key
+  C->>C: echo privkey | wg pubkey → public key
+  C->>N: POST /addnewpeer<br/>X-Auth-Token: token<br/>{"public_key": "..."}
+  N->>A: proxy_pass 172.29.144.50:5000
+  A->>A: secrets.compare_digest(token)
+  A->>A: validate: base64, 44 chars, 32-byte decode
+  A->>FS: glob *.conf → read AllowedIPs → build used-IP set
+  A->>A: allocate 10.13.26.X (first unused in .2–.254)
+  A->>FS: write sha256[:16].conf
+  A->>N: {"status":"ok","ip":"10.13.26.X","config":"..."}
+  N->>C: response
+  C->>C: substitute private key into config
+  C->>C: write wg0.conf (mode 600)
+  FS-->>W: inotifywait close_write event
+  W->>W: wg addconf wg0 <new-peer.conf>
+`} />
+
+## peer-watcher.sh
+
+The WireGuard container runs `peer-watcher.sh` on startup. It:
+
+1. Waits in a loop until `wg show wg0` succeeds.
+2. Writes `wg show wg0 public-key > /config/keys/server_public.key`.
+3. Loads all existing `*.conf` files from `/config/peers/` via `wg addconf`.
+4. Enters an `inotifywait -m -e close_write` loop — on each new `.conf` file, calls `wg addconf wg0 <file>`.
+
+No container restart is ever needed to activate new peers.
+
+The `peers/` directory is bind-mounted into both containers:
+- `auth-service`: `/app/peers` (writes peer configs here)
+- `wireguard`: `/config/peers` (peer-watcher reads from here)
+
+## IP Allocation
+
+```python
+def allocate_ip() -> str:
+    base = INTERNAL_SUBNET.rsplit(".", 1)[0]
+    used = _get_used_ips()
+    for i in range(2, 255):
+        candidate = f"{base}.{i}"
+        if candidate not in used:
+            return candidate
+    raise RuntimeError("No available IP addresses")
+```
+
+The server holds `10.13.26.1`. Clients are allocated `.2` through `.254` (253 max). Used IPs are determined by scanning `AllowedIPs` lines in all existing `*.conf` files in `/app/peers/`.
+
+## Public Key Validation
+
+```python
+def is_valid_wg_pubkey(key: str) -> bool:
+    if not re.fullmatch(r'[A-Za-z0-9+/]{43}=', key):
+        return False
+    decoded = base64.b64decode(key)
+    return len(decoded) == 32
+```
+
+An X25519 public key is 32 bytes. Base64-encoded it produces 44 characters (43 + one `=` padding). The validator checks both the character pattern and the decoded length.
+
+## Peer File Format
+
+Each registered peer is stored at `./peers/<sha256-of-pubkey[:16]>.conf`:
+
+```ini
+[Peer]
+PublicKey = <client-public-key>
+AllowedIPs = 10.13.26.X/32
+```
+
+## DNS Resolution Chain
+
+<Mermaid chart={`
+graph TD
+  VC["VPN Client\nDNS = 172.29.144.30"]
+  PH["Pi-hole 172.29.144.30\nblocklist check"]
+  UB["Unbound 172.29.144.20:5053\nrecursive + DNSSEC"]
+  ROOT["Root DNS Servers"]
+  BLOCK["NXDOMAIN (blocked)"]
+
+  VC -->|"DNS query"| PH
+  PH -->|"domain is blocked"| BLOCK
+  PH -->|"domain is allowed → :5053"| UB
+  UB -->|"recursive query"| ROOT
+  ROOT -->|"authoritative answer"| UB
+  UB -->|"DNSSEC-validated response"| PH
+  PH -->|"response"| VC
+`} />
+
+Generated client configs set `DNS = 172.29.144.30`. Pi-hole forwards non-blocked queries to Unbound at `172.29.144.20:5053` via `FTLCONF_dns_upstreams: "${IP_UNBOUND}#5053"`. Unbound performs full recursive resolution with DNSSEC — no Cloudflare or Google in the chain.
+
+## Nginx TLS Termination
+
+```nginx
+listen 443 ssl;
+ssl_protocols TLSv1.2 TLSv1.3;
+ssl_ciphers HIGH:!aNULL:!MD5;
+ssl_session_tickets off;
+
+location / {
+    proxy_pass http://172.29.144.50:5000;
+}
+```
+
+All HTTPS traffic proxies to auth-service. The only internet-facing endpoint is `POST /addnewpeer`. `GET /health` is internal only (Docker healthcheck).
+
+## server_public.key Lifecycle
+
+1. `setup.sh` generates the keypair and writes `./wireguard/keys/server_public.key`.
+2. `peer-watcher.sh` re-writes it on WireGuard startup via `wg show wg0 public-key`.
+3. auth-service mounts it read-only at `/wg-keys/server_public.key`.
+4. `helpers.py` reads it on every `/addnewpeer` request to include in the returned client config.
+
+The `depends_on: wireguard: condition: service_healthy` constraint guarantees WireGuard (and therefore the key file) is ready before auth-service starts.
