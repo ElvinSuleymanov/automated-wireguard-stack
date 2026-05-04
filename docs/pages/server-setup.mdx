@@ -1,0 +1,159 @@
+---
+title: Server Setup
+description: Step-by-step breakdown of what setup.sh does when you run it on your server.
+---
+
+# Server Setup
+
+`./setup.sh` is the only command needed to bring up the entire stack.
+
+## Run It
+
+```bash
+git clone https://github.com/ElvinSuleymanov/AutoGuard-VPN.git
+cd AutoGuard-VPN
+chmod +x setup.sh
+./setup.sh
+```
+
+## Step-by-Step Breakdown
+
+### 1 — Dependency Check
+
+Verifies `docker` is in PATH and `docker compose version` succeeds (falls back to the legacy `docker-compose` binary). Exits with install links if either check fails.
+
+### 2 — OS & Timezone Detection
+
+```bash
+DETECTED_TZ=$(timedatectl 2>/dev/null | grep "Time zone" | awk '{print $3}')
+if [ -z "$DETECTED_TZ" ]; then
+    DETECTED_TZ=$(cat /etc/timezone 2>/dev/null || echo "UTC")
+fi
+```
+
+Written to `.env` as `DETECTED_TZ` and consumed by the Pi-hole container.
+
+### 3 — Public IP Detection
+
+```bash
+curl -s --max-time 5 https://ifconfig.me/
+```
+
+Prompts you to confirm or override the detected IP. Used as the WireGuard `Endpoint` in all generated client configs and as the Nginx `server_name`.
+
+### 4 — Secret Generation
+
+```bash
+WEBPASSWORD=$(openssl rand -base64 12)
+REGISTRATION_TOKEN=$(openssl rand -hex 32)
+```
+
+`REGISTRATION_TOKEN` is the `X-Auth-Token` value clients must present to `/addnewpeer`. It is injected into both client scripts at step 11.
+
+### 5 — WireGuard X25519 Keypair
+
+```bash
+openssl genpkey -algorithm X25519 -out /tmp/wg_server_private_$$.pem
+SERVER_PRIVATE_KEY=$(openssl pkey -in ... -outform DER | tail -c 32 | base64)
+SERVER_PUBLIC_KEY=$(openssl pkey -in ... -pubout -outform DER | tail -c 32 | base64)
+```
+
+Uses `openssl` with no `wg` dependency on the host. The temp PEM file is deleted immediately after extraction.
+
+### 6 — wg0.conf Patching
+
+Template before patching:
+
+```ini
+[Interface]
+Address = your-server-address
+ListenPort = 51820
+PrivateKey = your-private-key
+PostUp = iptables -A FORWARD -i %i -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
+```
+
+After patching: `your-server-address` → `10.13.26.1/24`, `your-private-key` → the generated key.
+
+The server public key is written to `./wireguard/keys/server_public.key` (mode 644). `peer-watcher.sh` also re-writes it on WireGuard startup.
+
+> **Gotcha:** The PostUp/PostDown NAT rules target `eth0` hardcoded. If your Docker bridge egress interface is named differently (e.g. `ens3`), masquerade silently fails and VPN clients have no internet. Verify with `docker exec wireguard ip link show` if routing does not work.
+
+### 7 — Self-Signed TLS Certificate
+
+```bash
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  -keyout ./certs/privkey.pem -out ./certs/fullchain.pem -subj "/CN=localhost"
+```
+
+Valid for 365 days. Client scripts bypass cert validation — intentional for the setup phase and does not affect VPN tunnel security.
+
+### 8 — Nginx Config Patching
+
+Two `sed` replacements are made in `./nginx/nginx.conf`:
+
+```
+proxy_pass http://auth-service:5000  →  proxy_pass http://172.29.144.50:5000
+server_name public_ip               →  server_name <your-public-IP>
+```
+
+### 9 — .env File
+
+All configuration is written to `.env` with mode `600`:
+
+| Variable | Default |
+|---|---|
+| `SUBNET` | `172.29.144.0/24` |
+| `INTERNAL_SUBNET` | `10.13.26.0` |
+| `IP_WG` | `172.29.144.10` |
+| `IP_UNBOUND` | `172.29.144.20` |
+| `IP_PIHOLE` | `172.29.144.30` |
+| `IP_NGINX` | `172.29.144.40` |
+| `IP_AUTH` | `172.29.144.50` |
+| `PORT_WG` | `51820` |
+| `PORT_AUTH` | `5000` |
+| `PUBLIC_IP` | detected |
+| `WEBPASSWORD` | generated |
+| `REGISTRATION_TOKEN` | generated |
+| `DETECTED_TZ` | detected |
+
+> **Critical:** The `.env` file is empty in the repository. Running `docker compose up` before `setup.sh` will fail on undefined variables. Always run `setup.sh` first.
+
+### 10 — Stack Startup
+
+```bash
+docker compose up -d --wait
+```
+
+Startup order enforced by `depends_on` with `condition: service_healthy`:
+
+```
+unbound (healthy)
+  └── pihole (healthy)
+        └── wireguard (healthy)
+              └── auth-service (healthy)
+                    └── nginx-proxy (healthy)
+```
+
+The script polls for up to 120 seconds. On timeout it prints: `docker compose logs`.
+
+### 11 — Client Script Injection
+
+| Placeholder (bash) | Placeholder (PS1) | Value |
+|---|---|---|
+| `PLACEHOLDER-PUBLIC-IP` | `PLACEHOLDER_SERVER_PUBLIC_IP` | `$PUBLIC_IP` |
+| `PLACEHOLDER-INTERFACE-NAME` | `PLACEHOLDER_INTERFACE_NAME` | `wg0` |
+| `PLACEHOLDER-AUTH_KEY` | `PLACEHOLDER_AUTH_KEY` | `$REGISTRATION_TOKEN` |
+
+After injection, `./scripts/setupclient.sh` and `./scripts/setupclient.ps1` are ready to distribute to clients.
+
+## Post-Setup Verification
+
+```bash
+docker compose ps
+docker exec wireguard wg show wg0
+curl -sk https://localhost/health
+grep WEBPASSWORD .env
+```
+
+Pi-hole admin: `http://<server-ip>:65231/admin`
